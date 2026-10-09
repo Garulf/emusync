@@ -107,7 +107,6 @@ def test_discover_slots_applies_rules(tmp_path, emudeck):
         "retroarch/saves",
         "retroarch/states",
         "ryujinx/saves",
-        "xemu/saves",
     ]
     assert slots["dolphin/GC"] == emudeck / "saves" / "dolphin" / "GC"
 
@@ -167,3 +166,17 @@ def test_write_login_refuses_to_overwrite_malformed_config(tmp_path):
     with pytest.raises(ConfigError):
         write_login(path, "http://a", "t")
     assert path.read_text() == "server_url = "
+
+
+def test_xbox_emulators_are_disabled_unless_enabled(tmp_path, emudeck):
+    assert "xemu/saves" not in discover_slots(load(tmp_path, emudeck))
+    assert load(tmp_path, emudeck).settings_for("Xenia").enabled is False
+    path = tmp_path / "config.toml"
+    path.write_text(path.read_text() + "\n[emulators.xemu]\nenabled = true\n")
+    assert "xemu/saves" in discover_slots(Config.load(path))
+
+
+def test_other_settings_keep_xbox_emulators_disabled(tmp_path, emudeck):
+    path = tmp_path / "config.toml"
+    path.write_text(CONFIG.format(root=emudeck, custom=tmp_path) + '[emulators.xemu]\nstates = true\n')
+    assert Config.load(path).settings_for("xemu") == EmulatorSettings(enabled=False, states=True)

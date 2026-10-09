@@ -10,6 +10,7 @@ import tomli_w
 from emusync.model import is_safe_relative
 
 STATE_FOLDERS = frozenset({"states", "statesaves"})
+DISABLED_BY_DEFAULT = frozenset({"xemu", "xenia"})
 
 
 class ConfigError(Exception):
@@ -63,7 +64,8 @@ class Config:
         )
 
     def settings_for(self, emulator: str) -> EmulatorSettings:
-        return self.emulators.get(emulator.lower(), EmulatorSettings())
+        name = emulator.lower()
+        return self.emulators.get(name, EmulatorSettings(enabled=_enabled_by_default(name)))
 
 
 def _read_toml(path: Path) -> dict:
@@ -78,10 +80,14 @@ def _emulator_settings(name: str, section: dict) -> EmulatorSettings:
     if not isinstance(exclude, list) or not all(isinstance(item, str) for item in exclude):
         raise ConfigError(f"emulators.{name}.exclude must be a list of strings")
     return EmulatorSettings(
-        enabled=_flag(name, section, "enabled", default=True),
+        enabled=_flag(name, section, "enabled", default=_enabled_by_default(name)),
         states=_flag(name, section, "states", default=False),
         exclude=tuple(exclude),
     )
+
+
+def _enabled_by_default(emulator: str) -> bool:
+    return emulator.lower() not in DISABLED_BY_DEFAULT
 
 
 def _flag(emulator: str, section: dict, key: str, default: bool) -> bool:

@@ -74,6 +74,8 @@ path = "~/somewhere/saves"
 
 Each folder under `<emudeck_root>/saves/<emulator>/` is a slot, named `<emulator>/<folder>`, for example `pcsx2/saves`. Folders named `states` or `StateSaves` are skipped unless the emulator has `states = true`. `exclude` drops folders by name, `enabled = false` drops the whole emulator, and a `[slots."name"]` section adds a folder that EmuDeck doesn't manage.
 
+xemu and xenia are off by default, since EmuDeck links their save folders to the whole xemu disk image and to Xbox 360 DLC and title updates; set `enabled = true` under `[emulators.xemu]` or `[emulators.xenia]` to sync them anyway.
+
 ## Commands
 
 | Command | What it does |
