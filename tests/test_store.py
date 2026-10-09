@@ -168,3 +168,36 @@ def test_gc_skips_blob_files_that_cannot_be_removed(tmp_path, monkeypatch):
     monkeypatch.setattr(Path, "unlink", refuse)
     assert store.create_version(SLOT, 0, manifest, "deck").number == 1
     store.close()
+
+
+def test_keep_server_records_lost_copy_and_restores_head_atomically(store):
+    first = push(store, b"one", base=0)
+    lost = manifest_for(store, b"local")
+    kept = store.keep_server(SLOT, 1, lost, "pc")
+    assert kept.number == 3
+    assert kept.manifest == first.manifest
+    history = store.history(SLOT)
+    assert [(v.number, v.label) for v in history] == [
+        (3, "restore-of:1"),
+        (2, "conflict-lost"),
+        (1, None),
+    ]
+    assert store.version(SLOT, 2).manifest == lost
+    assert store.head(SLOT).manifest == first.manifest
+
+
+def test_keep_server_with_stale_base_inserts_nothing(store):
+    push(store, b"one", base=0)
+    push(store, b"two", base=1)
+    lost = manifest_for(store, b"local")
+    with pytest.raises(VersionConflict):
+        store.keep_server(SLOT, 1, lost, "pc")
+    assert [v.number for v in store.history(SLOT)] == [2, 1]
+
+
+def test_keep_server_with_missing_blobs_inserts_nothing(store):
+    push(store, b"one", base=0)
+    absent = Manifest.of([FileEntry("x.srm", sha256_bytes(b"never uploaded"), 14, 1.0)])
+    with pytest.raises(MissingBlobs):
+        store.keep_server(SLOT, 1, absent, "pc")
+    assert [v.number for v in store.history(SLOT)] == [1]

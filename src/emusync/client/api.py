@@ -82,6 +82,11 @@ class Api:
         response = self._request("POST", f"/slots/{_quote(slot)}/restore", json=body)
         return _parse(response, Version.from_dict)
 
+    def keep_server(self, slot: str, base: int, manifest: Manifest) -> Version:
+        body = {"base": base, "files": manifest.to_list()}
+        response = self._request("POST", f"/slots/{_quote(slot)}/keep-server", json=body)
+        return _parse(response, Version.from_dict)
+
     def _request(self, method: str, url: str, allow_404: bool = False, **kwargs) -> httpx.Response:
         try:
             response = self.http.request(method, url, **kwargs)

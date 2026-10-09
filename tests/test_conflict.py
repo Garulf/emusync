@@ -1,4 +1,5 @@
-from emusync.client.sync import Choice, Outcome
+from emusync.client.api import Offline
+from emusync.client.sync import MAX_CONFLICT_ROUNDS, Choice, Outcome
 
 SLOT = "retroarch/saves"
 
@@ -75,3 +76,63 @@ def test_conflict_reprompts_when_server_moves_during_prompt(make_device):
     assert pc.syncer.sync(SLOT, pc.root) is Outcome.KEPT_LOCAL
     assert prompter.asked == [(SLOT, 2), (SLOT, 3)]
     assert pc.syncer.api.head(SLOT).number == 4
+
+
+def test_offline_during_keep_server_changes_nothing_and_reprompts_next_time(make_device):
+    prompter = Scripted(Choice.SERVER, Choice.SERVER)
+    deck, pc = diverge(make_device, prompter)
+    real = pc.syncer.api.keep_server
+
+    def offline(*_args, **_kwargs):
+        raise Offline("down")
+
+    pc.syncer.api.keep_server = offline
+    assert pc.syncer.sync(SLOT, pc.root) is Outcome.OFFLINE
+    assert pc.state.base(SLOT).version == 1
+    assert pc.syncer.api.head(SLOT).number == 2
+    assert pc.files() == {"game.srm": b"pc progress"}
+
+    pc.syncer.api.keep_server = real
+    assert pc.syncer.sync(SLOT, pc.root) is Outcome.KEPT_SERVER
+    assert prompter.asked == [(SLOT, 2), (SLOT, 2)]
+    assert pc.files() == {"game.srm": b"deck progress"}
+
+
+def test_server_moving_during_keep_server_then_skip_changes_nothing(make_device):
+    deck, pc = None, None
+
+    class MovesServerThenSkips(Scripted):
+        def choose(self, slot, local, server):
+            if not self.asked:
+                deck.write("game.srm", b"deck again")
+                deck.syncer.sync(SLOT, deck.root)
+            return super().choose(slot, local, server)
+
+    prompter = MovesServerThenSkips(Choice.SERVER, None)
+    deck, pc = diverge(make_device, prompter)
+    assert pc.syncer.sync(SLOT, pc.root) is Outcome.SKIPPED_CONFLICT
+    assert prompter.asked == [(SLOT, 2), (SLOT, 3)]
+    assert pc.state.base(SLOT).version == 1
+    assert pc.files() == {"game.srm": b"pc progress"}
+    pc.syncer.prompter = Scripted(None)
+    assert pc.syncer.sync(SLOT, pc.root) is Outcome.SKIPPED_CONFLICT
+
+
+def test_conflict_gives_up_after_max_rounds(make_device):
+    deck, pc = None, None
+
+    class ServerAlwaysMoves:
+        def __init__(self):
+            self.asked = 0
+
+        def choose(self, slot, local, server):
+            self.asked += 1
+            deck.write("game.srm", f"deck {self.asked}".encode())
+            deck.syncer.sync(SLOT, deck.root)
+            return Choice.LOCAL
+
+    prompter = ServerAlwaysMoves()
+    deck, pc = diverge(make_device, prompter)
+    assert pc.syncer.sync(SLOT, pc.root) is Outcome.SKIPPED_CONFLICT
+    assert prompter.asked == MAX_CONFLICT_ROUNDS
+    assert pc.state.base(SLOT).version == 1

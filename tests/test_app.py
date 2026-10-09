@@ -100,3 +100,31 @@ def test_slot_names_with_slashes_and_spaces_route(client_for, slot):
     response = deck.post(f"/slots/{slot}/versions", json={"base": 0, "files": [entry]})
     assert response.status_code == 201
     assert deck.get(f"/slots/{slot}/versions/1").json()["number"] == 1
+
+
+def test_keep_server_records_lost_copy_and_returns_restored_head(client_for):
+    deck = client_for("deck")
+    first = upload(deck, b"one")
+    create(deck, 0, [first])
+    lost = upload(deck, b"local")
+    response = deck.post(f"/slots/{SLOT}/keep-server", json={"base": 1, "files": [lost]})
+    assert response.status_code == 201
+    assert response.json()["number"] == 3
+    assert response.json()["label"] == "restore-of:1"
+    assert response.json()["files"] == [first]
+    history = deck.get(f"/slots/{SLOT}/versions").json()
+    assert [(v["number"], v["label"]) for v in history] == [
+        (3, "restore-of:1"),
+        (2, "conflict-lost"),
+        (1, None),
+    ]
+
+
+def test_keep_server_with_stale_base_returns_409(client_for):
+    deck = client_for("deck")
+    create(deck, 0, [upload(deck, b"one")])
+    create(deck, 1, [upload(deck, b"two")])
+    lost = upload(deck, b"local")
+    response = deck.post(f"/slots/{SLOT}/keep-server", json={"base": 1, "files": [lost]})
+    assert response.status_code == 409
+    assert response.json()["head"] == 2

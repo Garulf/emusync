@@ -217,11 +217,22 @@ class Store:
         _check_manifest(manifest)
         with self._transaction():
             head = self._require_head(slot, base)
-            missing = sorted(h for h in manifest.hashes() if not self._blob_file(h).exists())
-            if missing:
-                raise MissingBlobs(missing)
+            self._require_blobs(manifest)
             number = self._insert_version(slot, head + 1, manifest, device, label)
         return self._finish(slot, number)
+
+    def keep_server(self, slot: str, base: int, lost: Manifest, device: str) -> Version:
+        _check_slot(slot)
+        _check_manifest(lost)
+        with self._transaction():
+            head = self._require_head(slot, base)
+            self._require_blobs(lost)
+            kept = self._load_version(slot, base)
+            if kept is None:
+                raise UnknownVersion(f"{slot} has no version {base}")
+            self._insert_version(slot, head + 1, lost, device, "conflict-lost")
+            self._insert_version(slot, head + 2, kept.manifest, device, f"restore-of:{base}")
+        return self._finish(slot, head + 2)
 
     def restore(self, slot: str, number: int, base: int, device: str) -> Version:
         _check_slot(slot)
@@ -240,6 +251,11 @@ class Store:
             self._prune(slot, number)
             self._collect_garbage()
             return self._load_version(slot, number)
+
+    def _require_blobs(self, manifest: Manifest) -> None:
+        missing = sorted(h for h in manifest.hashes() if not self._blob_file(h).exists())
+        if missing:
+            raise MissingBlobs(missing)
 
     def _require_head(self, slot: str, base: int) -> int:
         head = self._head_number(slot)

@@ -47,6 +47,21 @@ def test_restore(client_for):
     assert restored.label == "restore-of:1"
 
 
+def test_keep_server(client_for):
+    api = Api(client_for("deck"))
+    first = api.create_version(SLOT, 0, manifest_of(api, b"one"))
+    kept = api.keep_server(SLOT, 1, manifest_of(api, b"local"))
+    assert kept.number == 3
+    assert kept.label == "restore-of:1"
+    assert kept.manifest == first.manifest
+    assert [(v.number, v.label) for v in api.history(SLOT)][:2] == [
+        (3, "restore-of:1"),
+        (2, "conflict-lost"),
+    ]
+    with pytest.raises(PushRejected):
+        api.keep_server(SLOT, 1, manifest_of(api, b"local"))
+
+
 def test_bad_token_raises_unauthorized(store):
     from fastapi.testclient import TestClient
 

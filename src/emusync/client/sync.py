@@ -125,8 +125,8 @@ class Syncer:
         if choice is Choice.LOCAL:
             self._push(slot, root, local, base=head.number)
             return Outcome.KEPT_LOCAL
-        lost = self._push(slot, root, local, base=head.number, label="conflict-lost")
-        restored = self.api.restore(slot, head.number, base=lost.number)
+        self._upload_missing(root, local)
+        restored = self.api.keep_server(slot, head.number, local)
         self._pull(slot, root, local, restored)
         return Outcome.KEPT_SERVER
 

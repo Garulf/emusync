@@ -35,6 +35,11 @@ class RestoreBody(BaseModel):
     base: int
 
 
+class KeepServerBody(BaseModel):
+    base: int
+    files: list[FileBody]
+
+
 class MissingBody(BaseModel):
     hashes: list[str]
 
@@ -99,6 +104,11 @@ def create_app(store: Store) -> FastAPI:
     @app.post("/slots/{slot:path}/restore", status_code=201)
     def restore(slot: str, body: RestoreBody, name: str = Depends(device)) -> dict:
         return store.restore(slot, body.version, body.base, name).to_dict()
+
+    @app.post("/slots/{slot:path}/keep-server", status_code=201)
+    def keep_server(slot: str, body: KeepServerBody, name: str = Depends(device)) -> dict:
+        lost = Manifest.of(FileEntry(**f.model_dump()) for f in body.files)
+        return store.keep_server(slot, body.base, lost, name).to_dict()
 
     @app.post("/blobs/missing")
     def missing(body: MissingBody, _device: str = Depends(device)) -> dict:
