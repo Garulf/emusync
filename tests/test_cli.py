@@ -169,3 +169,13 @@ def test_sync_recovers_from_corrupt_state(env, capsys):
     assert cli.main(["sync"]) == 0
     assert "pcsx2/saves: pushed" in capsys.readouterr().out
     assert state_file.with_name("state.json.corrupt").exists()
+
+
+def test_sync_of_emptied_folder_explains_how_to_recover(env, capsys):
+    card = env.saves / "Mcd001.ps2"
+    card.write_bytes(b"card")
+    assert cli.main(["sync"]) == 0
+    card.unlink()
+    capsys.readouterr()
+    assert cli.main(["sync", "pcsx2/saves"]) == 0
+    assert "emusync restore pcsx2/saves <version>" in capsys.readouterr().err

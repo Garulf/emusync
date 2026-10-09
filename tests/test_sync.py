@@ -134,3 +134,14 @@ def test_push_race_with_identical_content_adopts(make_device, monkeypatch):
     monkeypatch.setattr(pc.syncer.api, "head", lambda slot: next(heads, None) or real_head(slot))
     assert pc.syncer.sync(SLOT, pc.root) is Outcome.ADOPTED
     assert pc.state.base(SLOT).version == 2
+
+
+def test_emptied_folder_can_be_restored_from_the_server(make_device):
+    deck = make_device("deck")
+    deck.write("a.srm", b"1")
+    deck.syncer.sync(SLOT, deck.root)
+    (deck.root / "a.srm").unlink()
+    assert deck.syncer.sync(SLOT, deck.root) is Outcome.SKIPPED_EMPTY
+    assert deck.syncer.restore(SLOT, deck.root, 1) is Outcome.PULLED
+    assert deck.files() == {"a.srm": b"1"}
+    assert deck.syncer.sync(SLOT, deck.root) is Outcome.IN_SYNC

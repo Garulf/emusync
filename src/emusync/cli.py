@@ -177,7 +177,12 @@ def _sync_slots(syncer: Syncer, slots: dict[str, Path]) -> int:
         if outcome is Outcome.OFFLINE:
             notify("server unreachable, playing with local saves")
             break
-        if outcome not in SUCCESSFUL:
+        if outcome is Outcome.SKIPPED_EMPTY:
+            notify(
+                f"{name}: folder is empty; run 'emusync restore {name} <version>'"
+                " to pull a server copy"
+            )
+        elif outcome not in SUCCESSFUL:
             notify(f"{name}: {outcome}")
     return exit_code
 

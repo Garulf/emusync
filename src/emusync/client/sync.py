@@ -37,6 +37,8 @@ SUCCESSFUL = frozenset(
     }
 )
 
+RESTORABLE = SUCCESSFUL | {Outcome.SKIPPED_EMPTY}
+
 
 class Choice(StrEnum):
     LOCAL = "local"
@@ -74,7 +76,7 @@ class Syncer:
 
     def restore(self, slot: str, root: Path, number: int) -> Outcome:
         outcome = self.sync(slot, root)
-        if outcome not in SUCCESSFUL:
+        if outcome not in RESTORABLE:
             raise RestoreAborted(outcome)
         head = self.api.head(slot)
         restored = self.api.restore(slot, number, base=head.number if head else 0)
