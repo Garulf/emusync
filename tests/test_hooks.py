@@ -170,3 +170,11 @@ def test_install_and_remove_replace_files_atomically(launchers):
     assert script.stat().st_ino != after.st_ino
     assert script.stat().st_mode == before.st_mode
     assert sorted(p.name for p in launchers.iterdir()) == sorted(p.name for p in FIXTURES.iterdir())
+
+
+def test_cli_hook_install_writes_an_absolute_exe(launchers, tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.chdir(tmp_path)
+    assert cli.main(["hook", "install", "--launchers", str(launchers), "--exe", "bin/emusync"]) == 0
+    text = (launchers / "retroarch.sh").read_text()
+    assert hook_line(tmp_path / "bin" / "emusync", "retroarch") in text

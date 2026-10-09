@@ -294,14 +294,14 @@ def _launchers_dir(args: argparse.Namespace) -> Path:
 
 
 def _own_executable() -> Path:
-    return Path(shutil.which("emusync") or sys.argv[0]).absolute()
+    return Path(shutil.which("emusync") or sys.argv[0])
 
 
 def cmd_hook_install(args: argparse.Namespace) -> int:
     launchers = _launchers_dir(args)
     if not launchers.is_dir():
         raise ConfigError(f"no EmuDeck launchers at {launchers}")
-    changed = hooks.install(launchers, args.exe or _own_executable())
+    changed = hooks.install(launchers, (args.exe or _own_executable()).absolute())
     for path in changed:
         print(f"hooked {path.name}")
     if not changed:
