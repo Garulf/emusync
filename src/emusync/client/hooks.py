@@ -1,0 +1,94 @@
+from __future__ import annotations
+
+import re
+import shlex
+from dataclasses import dataclass
+from pathlib import Path
+
+MARKER = "# emusync-hook"
+INIT_RE = re.compile(r'^\s*emulatorInit\s+"([^"]+)"')
+POST_RE = re.compile(r"^\s*cloud_sync_uploadForced\b")
+CLOUDSYNC_RE = re.compile(r'^cloud_sync_status="?true"?\s*$', re.MULTILINE)
+
+
+@dataclass(frozen=True)
+class LauncherStatus:
+    path: Path
+    emulator: str | None
+    hooked: bool
+
+
+def emudeck_settings_path() -> Path:
+    return Path.home() / ".config" / "EmuDeck" / "settings.sh"
+
+
+def hook_line(exe: Path, emulator: str) -> str:
+    quoted = shlex.quote(str(exe))
+    return f"[ -x {quoted} ] && {quoted} sync --emulator {shlex.quote(emulator)}  {MARKER}"
+
+
+def launcher_emulator(text: str) -> str | None:
+    for line in text.splitlines():
+        match = INIT_RE.match(line)
+        if match:
+            return match.group(1)
+    return None
+
+
+def add_hooks(text: str, exe: Path) -> str | None:
+    lines = strip_hooks(text).splitlines()
+    init_index = next((i for i, line in enumerate(lines) if INIT_RE.match(line)), None)
+    if init_index is None:
+        return None
+    line = hook_line(exe, INIT_RE.match(lines[init_index]).group(1))
+    lines.insert(init_index + 1, line)
+    post_index = next((i for i, existing in enumerate(lines) if POST_RE.match(existing)), None)
+    if post_index is None:
+        lines.append(line)
+    else:
+        lines.insert(post_index, line)
+    return _join(lines, text)
+
+
+def strip_hooks(text: str) -> str:
+    return _join([line for line in text.splitlines() if not line.endswith(MARKER)], text)
+
+
+def _join(lines: list[str], original: str) -> str:
+    if not lines:
+        return ""
+    return "\n".join(lines) + ("\n" if original.endswith("\n") else "")
+
+
+def install(launchers_dir: Path, exe: Path) -> list[Path]:
+    changed = []
+    for path in sorted(launchers_dir.glob("*.sh")):
+        text = path.read_text()
+        hooked = add_hooks(text, exe)
+        if hooked is not None and hooked != text:
+            path.write_text(hooked)
+            changed.append(path)
+    return changed
+
+
+def remove(launchers_dir: Path) -> list[Path]:
+    changed = []
+    for path in sorted(launchers_dir.glob("*.sh")):
+        text = path.read_text()
+        stripped = strip_hooks(text)
+        if stripped != text:
+            path.write_text(stripped)
+            changed.append(path)
+    return changed
+
+
+def status(launchers_dir: Path) -> list[LauncherStatus]:
+    return [
+        LauncherStatus(path, launcher_emulator(text), MARKER in text)
+        for path in sorted(launchers_dir.glob("*.sh"))
+        for text in [path.read_text()]
+    ]
+
+
+def cloudsync_enabled(settings_file: Path) -> bool:
+    return settings_file.is_file() and bool(CLOUDSYNC_RE.search(settings_file.read_text()))

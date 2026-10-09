@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import argparse
 import os
+import shutil
 import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
 
+from emusync.client import hooks
 from emusync.client.api import Api, ApiError, Offline, Unauthorized
 from emusync.client.config import (
     Config,
@@ -96,6 +98,18 @@ def build_parser() -> argparse.ArgumentParser:
     revoke.add_argument("name")
     _add_data_arg(revoke)
     revoke.set_defaults(handler=cmd_device_revoke)
+
+    hook = commands.add_parser("hook", help="manage EmuDeck launcher hooks")
+    hook_commands = hook.add_subparsers(dest="hook_command", required=True)
+    for name, handler in [
+        ("install", cmd_hook_install),
+        ("remove", cmd_hook_remove),
+        ("status", cmd_hook_status),
+    ]:
+        sub = hook_commands.add_parser(name)
+        sub.add_argument("--launchers", type=Path)
+        sub.add_argument("--exe", type=Path)
+        sub.set_defaults(handler=handler)
 
     return parser
 
@@ -260,3 +274,51 @@ def cmd_device_revoke(args: argparse.Namespace) -> int:
         print(f"emusync: no active device named {args.name}", file=sys.stderr)
         return 1
     return 0
+
+
+def _launchers_dir(args: argparse.Namespace) -> Path:
+    if args.launchers:
+        return args.launchers
+    try:
+        root = Config.load(config_path()).emudeck_root
+    except ConfigError:
+        root = Path.home() / "Emulation"
+    return root / "tools" / "launchers"
+
+
+def _own_executable() -> Path:
+    return Path(shutil.which("emusync") or sys.argv[0]).absolute()
+
+
+def cmd_hook_install(args: argparse.Namespace) -> int:
+    launchers = _launchers_dir(args)
+    if not launchers.is_dir():
+        raise ConfigError(f"no EmuDeck launchers at {launchers}")
+    changed = hooks.install(launchers, args.exe or _own_executable())
+    for path in changed:
+        print(f"hooked {path.name}")
+    if not changed:
+        print("all launchers already hooked")
+    if hooks.cloudsync_enabled(hooks.emudeck_settings_path()):
+        print(
+            "emusync: EmuDeck CloudSync is enabled; turn it off so the two do not fight",
+            file=sys.stderr,
+        )
+    return 0
+
+
+def cmd_hook_remove(args: argparse.Namespace) -> int:
+    for path in hooks.remove(_launchers_dir(args)):
+        print(f"unhooked {path.name}")
+    return 0
+
+
+def cmd_hook_status(args: argparse.Namespace) -> int:
+    missing = False
+    for launcher in hooks.status(_launchers_dir(args)):
+        if launcher.emulator is None:
+            continue
+        missing = missing or not launcher.hooked
+        state = "hooked" if launcher.hooked else "NOT hooked (run emusync hook install)"
+        print(f"{launcher.path.name:<28} {launcher.emulator:<14} {state}")
+    return 1 if missing else 0
