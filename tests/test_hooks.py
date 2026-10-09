@@ -10,6 +10,7 @@ from emusync.client.hooks import (
     add_hooks,
     cloudsync_enabled,
     hook_line,
+    launcher_emulator,
     install,
     remove,
     status,
@@ -57,7 +58,7 @@ def test_non_emulator_scripts_are_untouched(launchers):
 
 
 def test_install_is_idempotent_and_reinstall_updates_path(launchers):
-    assert len(install(launchers, EXE)) == 3
+    assert len(install(launchers, EXE)) == 4
     assert install(launchers, EXE) == []
     install(launchers, Path("/opt/emusync"))
     text = (launchers / "retroarch.sh").read_text()
@@ -128,3 +129,44 @@ def test_cli_hook_commands(launchers, tmp_path, monkeypatch, capsys):
     assert cli.main(["hook", "status", *args]) == 0
     assert cli.main(["hook", "remove", *args]) == 0
     assert MARKER not in (launchers / "retroarch.sh").read_text()
+
+
+def test_emulator_name_is_resolved_from_variable(launchers):
+    install(launchers, EXE)
+    lines = (launchers / "citron.sh").read_text().splitlines()
+    init = lines.index('emulatorInit "$emuName"')
+    assert lines[init + 1] == hook_line(EXE, "citron")
+    post = lines.index("cloud_sync_uploadForced")
+    assert lines[post - 1] == hook_line(EXE, "citron")
+    report = {s.path.name: s.emulator for s in status(launchers)}
+    assert report["citron.sh"] == "citron"
+
+
+def test_braced_variable_is_resolved():
+    text = 'name="eden"\nemulatorInit "${name}"\n'
+    assert launcher_emulator(text) == "eden"
+
+
+def test_unresolvable_variable_leaves_script_untouched(launchers):
+    script = launchers / "mystery.sh"
+    text = '#!/usr/bin/env bash\nemulatorInit "$unknownVar"\nrun-emulator\n'
+    script.write_text(text)
+    install(launchers, EXE)
+    assert script.read_text() == text
+    assert add_hooks(text, EXE) is None
+    report = {s.path.name: s.emulator for s in status(launchers)}
+    assert report["mystery.sh"] is None
+
+
+def test_install_and_remove_replace_files_atomically(launchers):
+    script = launchers / "retroarch.sh"
+    script.chmod(0o755)
+    before = script.stat()
+    install(launchers, EXE)
+    after = script.stat()
+    assert after.st_ino != before.st_ino
+    assert after.st_mode == before.st_mode
+    remove(launchers)
+    assert script.stat().st_ino != after.st_ino
+    assert script.stat().st_mode == before.st_mode
+    assert sorted(p.name for p in launchers.iterdir()) == sorted(p.name for p in FIXTURES.iterdir())
