@@ -11,6 +11,8 @@ from emusync.decide import Action, Base, decide
 from emusync.model import TMP_SUFFIX, FileEntry, Manifest, Version, is_safe_relative
 from emusync.scan import scan, sha256_bytes
 
+MAX_CONFLICT_ROUNDS = 3
+
 
 class Outcome(StrEnum):
     IN_SYNC = "in sync"
@@ -107,7 +109,26 @@ class Syncer:
         return self._resolve(slot, root, local, head)
 
     def _resolve(self, slot: str, root: Path, local: Manifest, head: Version) -> Outcome:
+        for _round in range(MAX_CONFLICT_ROUNDS):
+            choice = self.prompter.choose(slot, local, head)
+            if choice is None:
+                return Outcome.SKIPPED_CONFLICT
+            try:
+                return self._apply_choice(slot, root, local, head, choice)
+            except PushRejected:
+                head = self.api.head(slot)
         return Outcome.SKIPPED_CONFLICT
+
+    def _apply_choice(
+        self, slot: str, root: Path, local: Manifest, head: Version, choice: Choice
+    ) -> Outcome:
+        if choice is Choice.LOCAL:
+            self._push(slot, root, local, base=head.number)
+            return Outcome.KEPT_LOCAL
+        lost = self._push(slot, root, local, base=head.number, label="conflict-lost")
+        restored = self.api.restore(slot, head.number, base=lost.number)
+        self._pull(slot, root, local, restored)
+        return Outcome.KEPT_SERVER
 
     def _adopt(self, slot: str, head: Version) -> Outcome:
         self.state.set_base(slot, Base(head.number, head.manifest))
