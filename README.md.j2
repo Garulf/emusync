@@ -22,7 +22,7 @@ docker compose exec emusync emusync admin device add steamdeck
 
 The second command prints a token for the device. It is shown once, so copy it now. Run it once per machine, with a different name each time. `emusync admin device list` shows the registered devices and `emusync admin device revoke <name>` cuts one off.
 
-Everything the server stores lives in `./data`, mounted at `/data` in the container. Back that folder up.
+Everything the server stores lives in the `emusync-data` Docker volume, mounted at `/data` in the container. Back that volume up. To use a host folder instead, swap in a bind mount, but create it first and give it to uid 1000 with `mkdir data && sudo chown 1000:1000 data`, because the container doesn't run as root.
 
 The server speaks plain HTTP on port 8080. If the machines reach it over anything but a trusted LAN, put a reverse proxy in front for HTTPS.
 
