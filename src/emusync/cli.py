@@ -34,8 +34,6 @@ STATUS_TEXT = {
     Action.SKIP_EMPTY: "folder empty, will not push",
 }
 
-RUN_SETUP_ERRORS = (ConfigError, ApiError, OSError, ValueError)
-
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
@@ -216,7 +214,7 @@ def _prepare_run(emulator: str) -> tuple[Syncer, dict[str, Path]] | None:
         config = Config.load(config_path())
         syncer = _syncer(config)
         slots = _select(config, [], emulator)
-    except RUN_SETUP_ERRORS as err:
+    except Exception as err:
         notify(f"sync skipped: {err}")
         return None
     _sync_without_blocking(syncer, slots)
@@ -226,7 +224,7 @@ def _prepare_run(emulator: str) -> tuple[Syncer, dict[str, Path]] | None:
 def _sync_without_blocking(syncer: Syncer, slots: dict[str, Path]) -> None:
     try:
         _sync_slots(syncer, slots)
-    except RUN_SETUP_ERRORS as err:
+    except Exception as err:
         notify(f"sync skipped: {err}")
 
 

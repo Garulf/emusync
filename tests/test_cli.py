@@ -140,4 +140,32 @@ def test_run_with_corrupt_state_still_runs_the_command(env, capsys):
     state_file.write_text("not json")
     script = "raise SystemExit(4)"
     assert cli.main(["run", "pcsx2", "--", sys.executable, "-c", script]) == 4
-    assert "sync skipped" in capsys.readouterr().err
+    assert "state.json.corrupt" in capsys.readouterr().err
+
+
+def test_run_with_unexpected_state_shape_still_runs_the_command(env, capsys):
+    state_file = env.tmp / "state" / "emusync" / "state.json"
+    state_file.parent.mkdir(parents=True)
+    state_file.write_text("{}")
+    script = "raise SystemExit(6)"
+    assert cli.main(["run", "pcsx2", "--", sys.executable, "-c", script]) == 6
+
+
+def test_run_survives_unexpected_errors_before_and_after_the_command(env, monkeypatch, capsys):
+    def broken_sync(self, slot, root):
+        raise KeyError("version")
+
+    monkeypatch.setattr(Syncer, "sync", broken_sync)
+    script = "raise SystemExit(7)"
+    assert cli.main(["run", "pcsx2", "--", sys.executable, "-c", script]) == 7
+    assert capsys.readouterr().err.count("sync skipped") == 2
+
+
+def test_sync_recovers_from_corrupt_state(env, capsys):
+    state_file = env.tmp / "state" / "emusync" / "state.json"
+    state_file.parent.mkdir(parents=True)
+    state_file.write_text("{}")
+    (env.saves / "Mcd001.ps2").write_bytes(b"card")
+    assert cli.main(["sync"]) == 0
+    assert "pcsx2/saves: pushed" in capsys.readouterr().out
+    assert state_file.with_name("state.json.corrupt").exists()
