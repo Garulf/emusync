@@ -123,6 +123,8 @@ class Store:
         blob_grace_seconds: float = 3600.0,
         clock: Callable[[], float] = time.time,
     ):
+        if keep_versions < 2:
+            raise ValueError("keep_versions must be at least 2")
         self.blobs_dir = data_dir / "blobs"
         self.blobs_dir.mkdir(parents=True, exist_ok=True)
         self.keep_versions = keep_versions

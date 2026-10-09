@@ -179,3 +179,8 @@ def test_sync_of_emptied_folder_explains_how_to_recover(env, capsys):
     capsys.readouterr()
     assert cli.main(["sync", "pcsx2/saves"]) == 0
     assert "emusync restore pcsx2/saves <version>" in capsys.readouterr().err
+
+
+def test_serve_refuses_to_keep_fewer_than_two_versions(tmp_path, capsys):
+    assert cli.main(["serve", "--data", str(tmp_path / "data"), "--keep", "1"]) == 1
+    assert "at least 2" in capsys.readouterr().err

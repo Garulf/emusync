@@ -126,14 +126,16 @@ def test_retention_prunes_versions_and_old_unreferenced_blobs(tmp_path):
 
 
 def test_gc_keeps_fresh_blobs_uploaded_for_a_pending_push(tmp_path):
-    store = Store(tmp_path / "data", keep_versions=1, blob_grace_seconds=3600)
+    store = Store(tmp_path / "data", keep_versions=2, blob_grace_seconds=3600)
     pending_sha = sha256_bytes(b"pending")
     store.put_blob(pending_sha, b"pending")
     push(store, b"one", base=0)
     push(store, b"two", base=1)
+    push(store, b"three", base=2)
+    assert store.version(SLOT, 1) is None
     assert store.missing_blobs([pending_sha]) == []
     pending = Manifest.of([FileEntry("a.srm", pending_sha, 7, 1.0)])
-    assert store.create_version(SLOT, 2, pending, "pc").number == 3
+    assert store.create_version(SLOT, 3, pending, "pc").number == 4
     store.close()
 
 
@@ -201,3 +203,9 @@ def test_keep_server_with_missing_blobs_inserts_nothing(store):
     with pytest.raises(MissingBlobs):
         store.keep_server(SLOT, 1, absent, "pc")
     assert [v.number for v in store.history(SLOT)] == [1]
+
+
+@pytest.mark.parametrize("keep", [1, 0, -5])
+def test_keeping_fewer_than_two_versions_is_refused(tmp_path, keep):
+    with pytest.raises(ValueError, match="at least 2"):
+        Store(tmp_path / "data", keep_versions=keep)

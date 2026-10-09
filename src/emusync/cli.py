@@ -241,7 +241,11 @@ def cmd_serve(args: argparse.Namespace) -> int:
     except ImportError:
         print("emusync: server dependencies missing, install emusync[server]", file=sys.stderr)
         return 1
-    store = Store(Path(args.data), keep_versions=args.keep)
+    try:
+        store = Store(Path(args.data), keep_versions=args.keep)
+    except ValueError as err:
+        print(f"emusync: {err}", file=sys.stderr)
+        return 1
     uvicorn.run(create_app(store), host=args.host, port=args.port)
     return 0
 
