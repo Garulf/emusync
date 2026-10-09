@@ -156,13 +156,17 @@ class Syncer:
                 raise SyncError(f"server sent an unsafe path: {entry.path!r}")
         root.mkdir(parents=True, exist_ok=True)
         current = local.by_path()
+        touched: set[Path] = set()
         for entry in head.manifest.files:
             have = current.get(entry.path)
             if have is None or have.sha256 != entry.sha256:
                 self._write(root, entry)
+                touched.update(_directories_within(root, entry.path))
         wanted = {entry.path for entry in head.manifest.files}
         for path in current.keys() - wanted:
             (root / path).unlink(missing_ok=True)
+            touched.update(_directories_within(root, path))
+        _fsync_directories(touched)
         self.state.set_base(slot, Base(head.number, head.manifest))
 
     def _write(self, root: Path, entry: FileEntry) -> None:
@@ -172,6 +176,26 @@ class Syncer:
         target = root / entry.path
         target.parent.mkdir(parents=True, exist_ok=True)
         tmp = target.with_name(target.name + TMP_SUFFIX)
-        tmp.write_bytes(data)
+        _write_synced(tmp, data)
         os.utime(tmp, (entry.mtime, entry.mtime))
         os.replace(tmp, target)
+
+
+def _write_synced(path: Path, data: bytes) -> None:
+    with open(path, "wb") as handle:
+        handle.write(data)
+        handle.flush()
+        os.fsync(handle.fileno())
+
+
+def _directories_within(root: Path, relative_file: str) -> list[Path]:
+    return [root / parent for parent in Path(relative_file).parents]
+
+
+def _fsync_directories(directories: set[Path]) -> None:
+    for directory in sorted(directories):
+        fd = os.open(directory, os.O_RDONLY)
+        try:
+            os.fsync(fd)
+        finally:
+            os.close(fd)
