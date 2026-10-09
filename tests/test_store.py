@@ -1,5 +1,6 @@
 import os
 import time
+from pathlib import Path
 
 import pytest
 
@@ -133,4 +134,37 @@ def test_gc_keeps_fresh_blobs_uploaded_for_a_pending_push(tmp_path):
     assert store.missing_blobs([pending_sha]) == []
     pending = Manifest.of([FileEntry("a.srm", pending_sha, 7, 1.0)])
     assert store.create_version(SLOT, 2, pending, "pc").number == 3
+    store.close()
+
+
+def test_duplicate_manifest_paths_are_rejected(store):
+    sha = sha256_bytes(b"x")
+    store.put_blob(sha, b"x")
+    duplicated = Manifest.of([FileEntry("a.srm", sha, 1, 1.0), FileEntry("a.srm", sha, 1, 2.0)])
+    with pytest.raises(InvalidInput):
+        store.create_version(SLOT, 0, duplicated, "deck")
+    assert store.head(SLOT) is None
+
+
+def test_gc_skips_blob_files_that_vanish_before_stat(store, monkeypatch, tmp_path):
+    manifest = manifest_for(store, b"one")
+    ghost = tmp_path / "vanished.tmp"
+    monkeypatch.setattr(Path, "glob", lambda self, pattern: iter([ghost]))
+    version = store.create_version(SLOT, 0, manifest, "deck")
+    assert version.number == 1
+
+
+def test_gc_skips_blob_files_that_cannot_be_removed(tmp_path, monkeypatch):
+    store = Store(tmp_path / "data", blob_grace_seconds=0)
+    stale = tmp_path / "data" / "blobs" / "ab" / ("ab" + "0" * 62)
+    stale.parent.mkdir()
+    stale.write_bytes(b"stale")
+    os.utime(stale, (1.0, 1.0))
+    manifest = manifest_for(store, b"one")
+
+    def refuse(self, missing_ok=False):
+        raise PermissionError(self)
+
+    monkeypatch.setattr(Path, "unlink", refuse)
+    assert store.create_version(SLOT, 0, manifest, "deck").number == 1
     store.close()

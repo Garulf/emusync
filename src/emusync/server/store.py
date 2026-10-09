@@ -91,10 +91,28 @@ def _check_slot(slot: str) -> None:
 
 
 def _check_manifest(manifest: Manifest) -> None:
+    seen: set[str] = set()
     for entry in manifest.files:
         if not is_safe_relative(entry.path):
             raise InvalidInput(f"bad path: {entry.path!r}")
+        if entry.path in seen:
+            raise InvalidInput(f"duplicate path: {entry.path!r}")
+        seen.add(entry.path)
         _check_sha(entry.sha256)
+
+
+def _write_durably(target: Path, data: bytes) -> None:
+    tmp = target.with_name(f"{target.name}.{secrets.token_hex(4)}.tmp")
+    with open(tmp, "wb") as handle:
+        handle.write(data)
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.replace(tmp, target)
+    directory_fd = os.open(target.parent, os.O_RDONLY)
+    try:
+        os.fsync(directory_fd)
+    finally:
+        os.close(directory_fd)
 
 
 class Store:
@@ -185,9 +203,7 @@ class Store:
             raise InvalidInput("blob content does not match its hash")
         target = self._blob_file(sha256)
         target.parent.mkdir(exist_ok=True)
-        tmp = target.with_name(f"{target.name}.{secrets.token_hex(4)}.tmp")
-        tmp.write_bytes(data)
-        os.replace(tmp, target)
+        _write_durably(target, data)
 
     def blob_path(self, sha256: str) -> Path | None:
         _check_sha(sha256)
@@ -283,8 +299,11 @@ class Store:
         for path in self.blobs_dir.glob("*/*"):
             if path.name in referenced:
                 continue
-            if path.stat().st_mtime < oldest_allowed:
-                path.unlink(missing_ok=True)
+            try:
+                if path.stat().st_mtime < oldest_allowed:
+                    path.unlink(missing_ok=True)
+            except OSError:
+                continue
 
     def _blob_file(self, sha256: str) -> Path:
         return self.blobs_dir / sha256[:2] / sha256
