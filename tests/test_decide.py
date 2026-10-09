@@ -90,3 +90,15 @@ def test_interrupted_pull_with_deletion_resumes_as_pull():
 def test_own_edit_not_on_server_is_still_a_conflict():
     base = Base(1, Manifest.of([X1, Y1]))
     assert decide(Manifest.of([X1, Y2]), base, head(2, Manifest.of([X2, Y1]))) is Action.CONFLICT
+
+
+def test_same_version_number_with_different_content_is_server_divergence():
+    assert decide(C, Base(1, A), head(1, B)) is Action.CONFLICT
+    assert decide(A, Base(1, A), head(1, B)) is Action.CONFLICT
+    assert decide(B, Base(1, A), head(1, B)) is Action.ADOPT
+
+
+def test_newer_empty_head_never_deletes_local_saves():
+    assert decide(A, Base(3, A), head(4, EMPTY)) is Action.CONFLICT
+    base = Base(3, Manifest.of([X1, Y1]))
+    assert decide(Manifest.of([Y1]), base, head(4, EMPTY)) is Action.CONFLICT

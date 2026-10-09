@@ -30,10 +30,12 @@ def decide(local: Manifest, base: Base | None, head: Version | None) -> Action:
     local_changed = not local.same_content(base.manifest)
     if local_changed and local.is_empty() and not base.manifest.is_empty():
         return Action.SKIP_EMPTY
-    if head.number < base.version:
+    if _server_history_diverged(base, head):
         return Action.ADOPT if local.same_content(head.manifest) else Action.CONFLICT
 
     remote_changed = head.number != base.version
+    if remote_changed and head.manifest.is_empty() and not local.is_empty():
+        return Action.CONFLICT
     if not local_changed and not remote_changed:
         return Action.NOTHING
     if local_changed and not remote_changed:
@@ -41,6 +43,12 @@ def decide(local: Manifest, base: Base | None, head: Version | None) -> Action:
     if remote_changed and not local_changed:
         return Action.PULL
     return _reconcile(local, base.manifest, head)
+
+
+def _server_history_diverged(base: Base, head: Version) -> bool:
+    if head.number < base.version:
+        return True
+    return head.number == base.version and not head.manifest.same_content(base.manifest)
 
 
 def _first_sync(local: Manifest, head: Version | None) -> Action:
