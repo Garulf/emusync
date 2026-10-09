@@ -1,0 +1,6 @@
+.git
+.venv
+.tox
+tests
+**/__pycache__
+data

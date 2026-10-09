@@ -1,0 +1,4 @@
+project:
+  name: emusync
+  tagline: Steam Cloud style save sync for EmuDeck
+badges: []

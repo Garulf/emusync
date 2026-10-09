@@ -1,0 +1,9 @@
+services:
+  emusync:
+    build: .
+    image: emusync:latest
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/data
