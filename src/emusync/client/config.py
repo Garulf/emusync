@@ -45,17 +45,18 @@ class Config:
     def load(cls, path: Path) -> Config:
         if not path.exists():
             raise ConfigError(f"{path} not found, run `emusync login` first")
-        raw = tomllib.loads(path.read_text())
-        try:
-            server_url, token = raw["server_url"], raw["token"]
-        except KeyError as missing:
-            raise ConfigError(f"{path} is missing {missing}, run `emusync login`") from None
+        raw = _read_toml(path)
+        for key in ("server_url", "token"):
+            if key not in raw:
+                raise ConfigError(f"{path} is missing {key!r}, run `emusync login`")
+            if not isinstance(raw[key], str):
+                raise ConfigError(f"{path}: {key} must be a string")
         return cls(
-            server_url=server_url,
-            token=token,
+            server_url=raw["server_url"],
+            token=raw["token"],
             emudeck_root=Path(raw.get("emudeck_root", "~/Emulation")).expanduser(),
             emulators={
-                name.lower(): _emulator_settings(section)
+                name.lower(): _emulator_settings(name, section)
                 for name, section in raw.get("emulators", {}).items()
             },
             custom_slots=_custom_slots(raw.get("slots", {})),
@@ -65,12 +66,29 @@ class Config:
         return self.emulators.get(emulator.lower(), EmulatorSettings())
 
 
-def _emulator_settings(section: dict) -> EmulatorSettings:
+def _read_toml(path: Path) -> dict:
+    try:
+        return tomllib.loads(path.read_text())
+    except tomllib.TOMLDecodeError as error:
+        raise ConfigError(f"{path} is not valid TOML: {error}") from None
+
+
+def _emulator_settings(name: str, section: dict) -> EmulatorSettings:
+    exclude = section.get("exclude", [])
+    if not isinstance(exclude, list) or not all(isinstance(item, str) for item in exclude):
+        raise ConfigError(f"emulators.{name}.exclude must be a list of strings")
     return EmulatorSettings(
-        enabled=bool(section.get("enabled", True)),
-        states=bool(section.get("states", False)),
-        exclude=tuple(section.get("exclude", ())),
+        enabled=_flag(name, section, "enabled", default=True),
+        states=_flag(name, section, "states", default=False),
+        exclude=tuple(exclude),
     )
+
+
+def _flag(emulator: str, section: dict, key: str, default: bool) -> bool:
+    value = section.get(key, default)
+    if not isinstance(value, bool):
+        raise ConfigError(f"emulators.{emulator}.{key} must be true or false")
+    return value
 
 
 def _custom_slots(sections: dict) -> dict[str, Path]:
@@ -78,12 +96,15 @@ def _custom_slots(sections: dict) -> dict[str, Path]:
     for name, section in sections.items():
         if not is_safe_relative(name):
             raise ConfigError(f"bad custom slot name: {name!r}")
-        slots[name] = Path(section["path"]).expanduser()
+        path = section.get("path") if isinstance(section, dict) else None
+        if not isinstance(path, str):
+            raise ConfigError(f"slots.{name} needs a string path")
+        slots[name] = Path(path).expanduser()
     return slots
 
 
 def write_login(path: Path, server_url: str, token: str) -> None:
-    raw = tomllib.loads(path.read_text()) if path.exists() else {}
+    raw = _read_toml(path) if path.exists() else {}
     raw["server_url"] = server_url.rstrip("/")
     raw["token"] = token
     path.parent.mkdir(parents=True, exist_ok=True)

@@ -122,3 +122,48 @@ def test_slots_for_emulator_is_case_insensitive(tmp_path, emudeck):
     assert sorted(slots_for_emulator(slots, "cemu")) == ["Cemu/saves"]
     assert sorted(slots_for_emulator(slots, "Dolphin")) == ["dolphin/GC", "dolphin/Wii"]
     assert slots_for_emulator(slots, "nothing") == {}
+
+
+def write_config(tmp_path, body: str):
+    path = tmp_path / "c.toml"
+    path.write_text(body)
+    return path
+
+
+def test_malformed_toml_raises(tmp_path):
+    with pytest.raises(ConfigError, match="c.toml"):
+        Config.load(write_config(tmp_path, "server_url = "))
+
+
+def test_custom_slot_without_path_raises(tmp_path):
+    path = write_config(tmp_path, 'server_url = "x"\ntoken = "y"\n[slots."custom/a"]\n')
+    with pytest.raises(ConfigError, match="custom/a"):
+        Config.load(path)
+
+
+def test_string_exclude_raises(tmp_path):
+    path = write_config(
+        tmp_path, 'server_url = "x"\ntoken = "y"\n[emulators.ryujinx]\nexclude = "system"\n'
+    )
+    with pytest.raises(ConfigError, match="ryujinx.*exclude"):
+        Config.load(path)
+
+
+def test_string_states_raises(tmp_path):
+    path = write_config(
+        tmp_path, 'server_url = "x"\ntoken = "y"\n[emulators.retroarch]\nstates = "false"\n'
+    )
+    with pytest.raises(ConfigError, match="retroarch.*states"):
+        Config.load(path)
+
+
+def test_non_string_credentials_raise(tmp_path):
+    with pytest.raises(ConfigError, match="token"):
+        Config.load(write_config(tmp_path, 'server_url = "x"\ntoken = 5\n'))
+
+
+def test_write_login_refuses_to_overwrite_malformed_config(tmp_path):
+    path = write_config(tmp_path, "server_url = ")
+    with pytest.raises(ConfigError):
+        write_login(path, "http://a", "t")
+    assert path.read_text() == "server_url = "
