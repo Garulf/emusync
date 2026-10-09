@@ -71,3 +71,15 @@ def test_pick_prompter(monkeypatch):
     monkeypatch.delenv("DISPLAY")
     monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
     assert isinstance(prompt.pick_prompter(), NullPrompter)
+
+
+def test_zenity_question_defaults_to_skip_and_shows_text_literally():
+    calls = []
+
+    def run(args):
+        calls.append(args)
+        return completed(1)
+
+    ZenityPrompter(run=run).choose("a/saves", LOCAL, SERVER)
+    assert "--default-cancel" in calls[0]
+    assert "--no-markup" in calls[0]

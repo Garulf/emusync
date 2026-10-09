@@ -69,6 +69,8 @@ class ZenityPrompter:
                 f"--ok-label={KEEP_LOCAL}",
                 f"--cancel-label={SKIP}",
                 f"--extra-button={KEEP_SERVER}",
+                "--default-cancel",
+                "--no-markup",
             ]
         )
         if result.returncode == 0:
