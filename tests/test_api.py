@@ -1,3 +1,4 @@
+import httpx
 import pytest
 
 from emusync.client.api import Api, Offline, PushRejected, ServerError, Unauthorized
@@ -66,3 +67,26 @@ def test_unreachable_server_is_offline():
     api = Api.connect("http://127.0.0.1:9", "token", timeout=2.0)
     with pytest.raises(Offline):
         api.check()
+
+
+def api_answering(response: httpx.Response) -> Api:
+    transport = httpx.MockTransport(lambda request: response)
+    return Api(httpx.Client(transport=transport, base_url="http://test"))
+
+
+def test_redirect_is_a_server_error():
+    api = api_answering(httpx.Response(302, headers={"Location": "http://elsewhere/"}))
+    with pytest.raises(ServerError):
+        api.check()
+
+
+def test_non_json_success_body_is_a_server_error():
+    api = api_answering(httpx.Response(200, text="<html>login</html>", headers={"Content-Type": "text/html"}))
+    with pytest.raises(ServerError):
+        api.history("a/saves")
+
+
+def test_conflict_without_head_is_a_server_error():
+    api = api_answering(httpx.Response(409, json={}))
+    with pytest.raises(ServerError):
+        api.create_version("a/saves", 0, Manifest.of([]))

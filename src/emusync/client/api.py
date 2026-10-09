@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Callable
+from typing import Any, TypeVar
 from urllib.parse import quote
 
 import httpx
@@ -7,6 +9,8 @@ import httpx
 from emusync.model import Manifest, Version
 
 CONNECT_TIMEOUT = 3.0
+
+T = TypeVar("T")
 
 
 class ApiError(Exception):
@@ -50,14 +54,15 @@ class Api:
 
     def head(self, slot: str) -> Version | None:
         response = self._request("GET", f"/slots/{_quote(slot)}/versions/head", allow_404=True)
-        return None if response.status_code == 404 else Version.from_dict(response.json())
+        return None if response.status_code == 404 else _parse(response, Version.from_dict)
 
     def history(self, slot: str) -> list[Version]:
         response = self._request("GET", f"/slots/{_quote(slot)}/versions")
-        return [Version.from_dict(d) for d in response.json()]
+        return _parse(response, lambda items: [Version.from_dict(d) for d in items])
 
     def missing(self, hashes: list[str]) -> list[str]:
-        return self._request("POST", "/blobs/missing", json={"hashes": hashes}).json()["missing"]
+        response = self._request("POST", "/blobs/missing", json={"hashes": hashes})
+        return _parse(response, lambda body: list(body["missing"]))
 
     def upload(self, sha256: str, data: bytes) -> None:
         self._request("PUT", f"/blobs/{sha256}", content=data)
@@ -70,12 +75,12 @@ class Api:
     ) -> Version:
         body = {"base": base, "files": manifest.to_list(), "label": label}
         response = self._request("POST", f"/slots/{_quote(slot)}/versions", json=body)
-        return Version.from_dict(response.json())
+        return _parse(response, Version.from_dict)
 
     def restore(self, slot: str, number: int, base: int) -> Version:
         body = {"version": number, "base": base}
         response = self._request("POST", f"/slots/{_quote(slot)}/restore", json=body)
-        return Version.from_dict(response.json())
+        return _parse(response, Version.from_dict)
 
     def _request(self, method: str, url: str, allow_404: bool = False, **kwargs) -> httpx.Response:
         try:
@@ -85,13 +90,20 @@ class Api:
         if response.status_code == 401:
             raise Unauthorized("server rejected the token, run `emusync login`")
         if response.status_code == 409:
-            raise PushRejected(response.json()["head"])
+            raise PushRejected(_parse(response, lambda body: int(body["head"])))
         if response.status_code == 404 and allow_404:
             return response
-        if response.status_code >= 400:
+        if not response.is_success:
             raise ServerError(f"{method} {url}: {response.status_code} {response.text}")
         return response
 
 
 def _quote(slot: str) -> str:
     return quote(slot, safe="/")
+
+
+def _parse(response: httpx.Response, build: Callable[[Any], T]) -> T:
+    try:
+        return build(response.json())
+    except (ValueError, KeyError, TypeError) as err:
+        raise ServerError(f"malformed response from {response.request.url}") from err
