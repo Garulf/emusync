@@ -29,7 +29,7 @@ def env(tmp_path, monkeypatch, store):
     config_file.parent.mkdir(parents=True)
     config_file.write_text(f'emudeck_root = "{emudeck}"\n')
     token = store.add_device("deck")
-    assert cli.main(["login", "http://saves.lan:8080", token]) == 0
+    assert cli.main(["login", "--", "http://saves.lan:8080", token]) == 0
     return SimpleNamespace(saves=saves, store=store, tmp=tmp_path)
 
 
