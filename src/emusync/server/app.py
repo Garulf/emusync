@@ -4,6 +4,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
+from starlette.concurrency import run_in_threadpool
 
 from emusync.model import FileEntry, Manifest
 from emusync.server.store import (
@@ -116,7 +117,8 @@ def create_app(store: Store) -> FastAPI:
 
     @app.put("/blobs/{sha256}", status_code=204)
     async def put_blob(sha256: str, request: Request, _device: str = Depends(device)) -> Response:
-        store.put_blob(sha256, await request.body())
+        body = await request.body()
+        await run_in_threadpool(store.put_blob, sha256, body)
         return Response(status_code=204)
 
     @app.get("/blobs/{sha256}")
