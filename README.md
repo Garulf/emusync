@@ -9,9 +9,11 @@ It covers the save folders EmuDeck links under `~/Emulation/saves/`. It was buil
 
 ## Server
 
-You need Docker and a checkout of this repository on the machine that will host the saves.
+You need Docker on the machine that will host the saves.
 
 ```sh
+git clone https://github.com/Garulf/emusync.git
+cd emusync
 docker compose up -d --build
 docker compose exec emusync emusync admin device add steamdeck
 ```
@@ -30,10 +32,10 @@ Install [uv](https://docs.astral.sh/uv/) on each machine. On SteamOS the install
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-Then, from a checkout of this repository:
+Then install emusync from this repository:
 
 ```sh
-uv tool install .
+uv tool install git+https://github.com/Garulf/emusync
 emusync login http://your-server:8080 <token>
 emusync sync
 emusync hook install
