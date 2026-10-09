@@ -32,6 +32,8 @@ STATUS_TEXT = {
     Action.SKIP_EMPTY: "folder empty, will not push",
 }
 
+RUN_SETUP_ERRORS = (ConfigError, ApiError, OSError, ValueError)
+
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
@@ -188,13 +190,30 @@ def cmd_run(args: argparse.Namespace) -> int:
     command = args.cmd[1:] if args.cmd[:1] == ["--"] else args.cmd
     if not command:
         raise ConfigError("nothing to run, usage: emusync run EMULATOR -- COMMAND...")
-    config = Config.load(config_path())
-    syncer = _syncer(config)
-    slots = _select(config, [], args.emulator)
-    _sync_slots(syncer, slots)
+    prepared = _prepare_run(args.emulator)
     exit_code = subprocess.call(command)
-    _sync_slots(syncer, slots)
+    if prepared:
+        _sync_without_blocking(*prepared)
     return exit_code
+
+
+def _prepare_run(emulator: str) -> tuple[Syncer, dict[str, Path]] | None:
+    try:
+        config = Config.load(config_path())
+        syncer = _syncer(config)
+        slots = _select(config, [], emulator)
+    except RUN_SETUP_ERRORS as err:
+        notify(f"sync skipped: {err}")
+        return None
+    _sync_without_blocking(syncer, slots)
+    return syncer, slots
+
+
+def _sync_without_blocking(syncer: Syncer, slots: dict[str, Path]) -> None:
+    try:
+        _sync_slots(syncer, slots)
+    except RUN_SETUP_ERRORS as err:
+        notify(f"sync skipped: {err}")
 
 
 def cmd_serve(args: argparse.Namespace) -> int:

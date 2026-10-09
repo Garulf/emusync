@@ -125,3 +125,19 @@ def test_admin_device_commands(tmp_path, capsys):
     assert "deck" in capsys.readouterr().out
     assert cli.main(["admin", "device", "revoke", "deck", "--data", data]) == 0
     assert cli.main(["admin", "device", "revoke", "deck", "--data", data]) == 1
+
+
+def test_run_without_config_still_runs_the_command(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "empty"))
+    script = "raise SystemExit(5)"
+    assert cli.main(["run", "pcsx2", "--", sys.executable, "-c", script]) == 5
+    assert "emusync login" in capsys.readouterr().err
+
+
+def test_run_with_corrupt_state_still_runs_the_command(env, capsys):
+    state_file = env.tmp / "state" / "emusync" / "state.json"
+    state_file.parent.mkdir(parents=True)
+    state_file.write_text("not json")
+    script = "raise SystemExit(4)"
+    assert cli.main(["run", "pcsx2", "--", sys.executable, "-c", script]) == 4
+    assert "sync skipped" in capsys.readouterr().err
